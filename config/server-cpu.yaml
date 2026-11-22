@@ -1,0 +1,34 @@
+# Linux server without a GPU (x86_64). Same decoding settings as the measured CPU profile
+# (docs/BENCHMARKS.md): turbo int8 FAST with packing, turbo beam-5 REFINE, 10 s segments.
+# Capacity is roughly 1 channel per 8 physical cores of a 2019-class laptop CPU; measure yours with
+# `stt bench` before adding channels.
+environment: server-cpu
+
+ingest:
+  buffer_size: 8388608        # Linux caps this at net.core.rmem_max — raise it (docs/DEPLOYMENT.md)
+
+asr:
+  device: cpu
+  compute_type: int8
+  cpu_threads: 8              # = physical cores; override with STT_ASR__CPU_THREADS
+  num_workers: 1
+  fast:   {model: large-v3-turbo, beam_size: 1, best_of: 1}
+  refine: {model: large-v3-turbo, beam_size: 5, best_of: 5}
+  batched: false
+  pack_s: 28
+  refine_max_lag_s: 1800
+
+streaming:
+  mode: segment
+  max_segment_s: 10
+  partials_enabled: false
+
+relay: {enabled: true, dir: var/hls, window_s: 900, segment_s: 2}
+
+logging: {level: INFO, json: true}
+
+# Channels are normally managed through the API (stored in PostgreSQL):
+#   curl -X POST localhost:8000/channels -H "Authorization: Bearer $STT_API_TOKEN" \
+#        -H 'content-type: application/json' \
+#        -d '{"id":"news1","name":"News 1","url":"udp://@239.10.10.5:5000","audio_track":{"language":"urd"}}'
+channels: []
