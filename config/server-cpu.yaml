@@ -23,7 +23,7 @@ streaming:
   max_segment_s: 10
   partials_enabled: false
 
-relay: {enabled: true, dir: var/hls, window_s: 900, segment_s: 2}
+relay: {enabled: true, dir: var/hls, window_s: 900, segment_s: 2, archive_hours: 24}
 
 logging: {level: INFO, json: true}
 
