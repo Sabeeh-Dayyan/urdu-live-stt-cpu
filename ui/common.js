@@ -90,18 +90,47 @@ function toast(msg, bad) {
   clearTimeout(t._h); t._h = setTimeout(() => { t.style.display = "none"; }, bad ? 8000 : 3500);
 }
 
-// ---- navigation bar (every page)
-const PAGES = [["live", "/", "Live"], ["archive", "/ui/archive", "Archive & search"], ["reports", "/ui/reports", "Reports"],
-               ["uploads", "/ui/uploads", "Upload video"], ["channels", "/ui/channels", "Channels"], ["system", "/ui/system", "System & links"]];
+// ---- theme (light by default, dark on request; remembered per browser). Runs before first paint.
+function getTheme() {
+  const q = new URLSearchParams(location.search).get("theme");
+  if (q === "light" || q === "dark") return q;
+  try { return localStorage.getItem("stt_theme") || "light"; } catch (e) { return "light"; }
+}
+function setTheme(t) {
+  document.documentElement.dataset.theme = t;
+  try { localStorage.setItem("stt_theme", t); } catch (e) { /* private mode */ }
+  const b = document.getElementById("navTheme");
+  if (b) { b.textContent = t === "dark" ? "☀ Light" : "☾ Dark"; b.title = `Switch to ${t === "dark" ? "light" : "dark"} theme`; }
+}
+document.documentElement.dataset.theme = getTheme();
+// Transcript text size (A− / A+), remembered per browser.
+function urduSize(delta) {
+  let v = 22;
+  try { v = parseInt(localStorage.getItem("stt_urdu_size") || "22", 10) || 22; } catch (e) { /* default */ }
+  if (delta) v = Math.max(16, Math.min(34, v + delta));
+  document.documentElement.style.setProperty("--urdu-size", v + "px");
+  try { localStorage.setItem("stt_urdu_size", String(v)); } catch (e) { /* private mode */ }
+  return v;
+}
+urduSize(0);
+
+// ---- navigation bar (every page; hidden with ?embed=1, e.g. inside Grafana)
+const PAGES = [["live", "/", "Live"], ["archive", "/ui/archive", "Find a moment"], ["reports", "/ui/reports", "Reports"],
+               ["uploads", "/ui/uploads", "Upload a file"], ["channels", "/ui/channels", "Channel setup"], ["system", "/ui/system", "System & links"]];
+const EMBED = new URLSearchParams(location.search).get("embed") === "1";
 async function nav(active) {
+  if (EMBED) { document.body.classList.add("embed"); return; }
   const n = document.createElement("nav");
   n.className = "top";
-  n.innerHTML = `<span class="brand">Live STT</span>` +
+  n.innerHTML = `<a class="brand" href="/"><span class="logo">◉</span>Urdu Live Transcription</a>` +
     PAGES.map(([k, href, label]) => `<a class="tab${k === active ? " on" : ""}" href="${href}">${label}</a>`).join("") +
-    `<span class="sp"></span><span id="navHealth" class="pill">health ?</span>
-     <a id="navGrafana" class="pill" target="_blank" rel="noopener">Grafana ↗</a>
-     <button id="navToken" class="pill" title="API token for changes (add/edit channels, uploads)">🔑</button>`;
+    `<span class="sp"></span><span id="navHealth" class="pill" title="Server health">checking…</span>
+     <a id="navGrafana" class="pill" target="_blank" rel="noopener" title="Metrics dashboard">Grafana ↗</a>
+     <button id="navTheme" class="pill"></button>
+     <button id="navToken" class="pill" title="API token for changes (channel setup, uploads)">🔑</button>`;
   document.body.prepend(n);
+  setTheme(getTheme());
+  n.querySelector("#navTheme").onclick = () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
   const tokBtn = n.querySelector("#navToken");
   const showTok = () => { tokBtn.textContent = getToken() ? "🔑 token set" : "🔑 token"; };
   showTok();
@@ -112,7 +141,7 @@ async function nav(active) {
   const cfg = await loadConfig();
   const g = n.querySelector("#navGrafana");
   g.href = resolveLink((cfg.links || {}).grafana || "{scheme}://{host}:3000/d/live-stt");
-  if (cfg.token_required === false) tokBtn.title = "This server does not require a token";
+  if (cfg.token_required === false) { tokBtn.style.display = "none"; }
   pollNavHealth();
   setInterval(pollNavHealth, 10000);
 }
@@ -121,11 +150,17 @@ async function pollNavHealth() {
   if (!h) return;
   try {
     const j = await (await fetch("/health")).json();
-    const workers = Object.keys(j.components || {}).filter(k => k.startsWith("worker:")).length;
-    h.textContent = `${j.status} · workers ${workers}`;
+    h.innerHTML = `<span class="dot"></span>${j.status === "ok" ? "System OK" : "System problem"}`;
     h.className = "pill " + (j.status === "ok" ? "ok" : "bad");
-    h.title = `redis ${j.redis ? "ok" : "down"} · db ${j.db ? "ok" : "down"}`;
-  } catch (e) { h.textContent = "health ✗"; h.className = "pill bad"; }
+    h.title = `redis ${j.redis ? "ok" : "down"} · database ${j.db ? "ok" : "down"} — details on System & links`;
+  } catch (e) { h.textContent = "server unreachable"; h.className = "pill bad"; }
+}
+// The one channel this deployment shows: ?ch=… if given, else the first enabled channel.
+async function mainChannel() {
+  const want = new URLSearchParams(location.search).get("ch");
+  const chans = await channelList();
+  const on = chans.filter(c => c.enabled !== false);
+  return { chans, cur: chans.find(c => c.id === want) || on[0] || chans[0] || null };
 }
 
 // ---- time inputs (local time of the browser)
@@ -158,7 +193,8 @@ function sentenceRows(container, sents, { label, onClick, terms, minConf = 0 } =
     row.title = `${fmtUtc(s.s)} → ${fmtUtc(s.e)} · ${s.pass} — click to play from here`;
     row.innerHTML = `<span class="t"><span class="tt"></span><small></small></span><span class="txt" dir="auto"></span><span class="c"></span>`;
     row.querySelector(".tt").textContent = label ? label(s) : fmtLocal(s.s);
-    row.querySelector("small").textContent = s.pass;
+    row.querySelector("small").textContent = s.pass === "refined" ? "✓ re-checked" : "";
+    if (s.pass === "refined") row.querySelector("small").title = "Second, more careful pass done";
     const txt = row.querySelector(".txt");
     if (terms && terms.length) highlightTerms(txt, s.text, terms);
     else s.ws.forEach((w, i) => {

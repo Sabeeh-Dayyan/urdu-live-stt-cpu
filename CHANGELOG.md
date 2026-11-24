@@ -1,5 +1,18 @@
 # Changelog
 
+## 0.2.1 — 2026-11-25
+- **New look**: light theme by default with a dark switch; one channel per page; video and transcript
+  **side by side** (no scrolling), metric cards in a row below, larger adjustable Urdu text, plain
+  labels and a how-to strip. **Go to** any date and time from the live page; search opens Find a moment.
+- **Grafana**: single-channel, light theme by default, live page embedded full width, two rows of
+  stat cards (new: text delay, audio skipped under load).
+- **Load shedding** (`asr.fast_max_lag_s`, CPU profiles 120 s): an overloaded machine skips stale
+  live audio (recorded as a gap) instead of drifting hours behind.
+- **Fix: video stayed in sync with the transcript only until the first feed outage.** The HLS
+  date-time is now re-anchored to the clock after every outage or timestamp jump (it had drifted
+  3 h behind in a day-long test), and every archived segment is indexed.
+- **Repeat trimming**: Whisper's looping tails («وزیراعظم وزیراعظم وزیراعظم …») are cut to one copy.
+
 ## 0.2.0 — 2026-11-24
 - **Video archive and time-range replay**: segments are kept `relay.archive_hours` (servers: 24 h)
   with a per-day index; watch any range with its transcript, download it as MP4/TS, see coverage.

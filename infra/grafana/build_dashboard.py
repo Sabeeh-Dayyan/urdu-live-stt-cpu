@@ -44,82 +44,108 @@ def panels() -> list[dict]:
     out = [{"id": 100, "type": "row", "title": "Live transcript & accuracy", "collapsed": False,
             "gridPos": {"x": 0, "y": y, "w": 24, "h": 1}, "panels": []}]
     y += 1
-    links = [("Live", "/"), ("Archive &amp; search", "/ui/archive"), ("Reports", "/ui/reports"),
-             ("Upload video", "/ui/uploads"), ("Channels", "/ui/channels"),
+    links = [("Live", "/"), ("Find a moment", "/ui/archive"), ("Reports", "/ui/reports"),
+             ("Upload a file", "/ui/uploads"), ("Channel setup", "/ui/channels"),
              ("System &amp; all links", "/ui/system"), ("API docs", "/docs"), ("Health", "/health")]
     out.append({
         "id": 120, "type": "text", "title": "",
-        "description": "Links to every page of the live-stt web UI (uses the Player URL variable).",
+        "description": "Links to every page of the live-stt web UI (uses the Player URL variable) "
+                       "and a light/dark switch for this dashboard.",
         "gridPos": {"x": 0, "y": y, "w": 24, "h": 2}, "transparent": True,
-        "options": {"mode": "html", "content": '<div style="display:flex;flex-wrap:wrap;gap:6px 14px;'
+        "options": {"mode": "html", "content": '<div style="display:flex;flex-wrap:wrap;gap:6px 16px;'
                     'align-items:center;font-size:14px">' + "".join(
                         f'<a href="{UI}{h}" target="_blank" rel="noopener">{t} ↗</a>'
-                        for t, h in links) + "</div>"},
+                        for t, h in links) +
+                    '<span style="flex:1"></span><a href="?theme=light">☀ Light</a>'
+                    '<a href="?theme=dark">☾ Dark</a></div>'},
     })
     y += 2
     out.append({
-        "id": 101, "type": "text", "title": "Live player (video + transcript)",
-        "description": "The live-stt web page embedded. Click any sentence to play the video from "
-                       "that moment; LIVE returns to the live edge.",
-        "gridPos": {"x": 0, "y": y, "w": 14, "h": 20},
+        "id": 101, "type": "text", "title": "Live: video and transcript side by side",
+        "description": "The live-stt web page embedded. Click any line to replay the video from "
+                       "that moment; 'Back to live' returns to the live edge. 'Go to' opens any "
+                       "earlier date and time.",
+        "gridPos": {"x": 0, "y": y, "w": 24, "h": 19},
         "options": {"mode": "html", "content":
-                    f'<iframe src="{UI}/?embed=1&min_conf=${{min_conf}}" '
-                    'style="width:100%;height:100%;border:0" allow="autoplay"></iframe>'},
+                    f'<iframe src="{UI}/?embed=1&ch=${{channel}}&min_conf=${{min_conf}}" '
+                    'style="width:100%;height:100%;border:0" allow="autoplay; fullscreen">'
+                    '</iframe>'},
     })
-    # live stats (Prometheus, last 5 min)
-    out.append(stat(102, "Avg confidence (live, 5 min)", 14, y, 5, {
+    y += 19
+    W = 4  # six stat cards per row
+    # Row 1: live (Prometheus, last 5 min) and measured accuracy on the reference set
+    out.append(stat(102, "Confidence · last 5 min", 0, y, W, {
         "refId": "A", "datasource": PROM,
         "expr": "sum(rate(stt_asr_segment_confidence_sum[5m])) / "
                 "sum(rate(stt_asr_segment_confidence_count[5m]))"},
         decimals=1, ds=PROM, thresholds=CONF_STEPS,
-        desc="Mean word probability of final+refined segments — model confidence, not accuracy."))
-    out.append(stat(103, "Segments > 90% confidence (live, 5 min)", 19, y, 5, {
+        desc="Mean word probability of final+refined segments in the last 5 minutes — the "
+             "model's own confidence, not verified accuracy."))
+    out.append(stat(103, "Clear segs · last 5 min", W, y, W, {
         "refId": "A", "datasource": PROM,
         "expr": "1 - sum(rate(stt_asr_segment_confidence_bucket{le=\"0.9\"}[5m])) / "
                 "sum(rate(stt_asr_segment_confidence_count[5m]))"}, ds=PROM,
         desc="Share of segments in the last 5 minutes whose confidence is above 90 %."))
-    # range stats (PostgreSQL, dashboard time range)
-    rng = f"$__timeFilter(start_utc) AND {CH_FILTER}"
-    out.append(stat(104, "Avg confidence (range)", 14, y + 4, 5, sql(
-        "A", f"SELECT avg(confidence) FROM asr_segments WHERE {rng}"),
-        decimals=1, thresholds=CONF_STEPS,
-        desc="Average model confidence of stored segments in the selected time range."))
-    out.append(stat(105, "Segments ≥ min confidence (range)", 19, y + 4, 5, sql(
-        "A", f"SELECT avg(CASE WHEN confidence >= $min_conf THEN 1.0 ELSE 0.0 END) "
-             f"FROM asr_segments WHERE {rng}"),
-        desc="Share of stored segments at or above the Min confidence variable."))
-    out.append(stat(106, "Segments (range)", 14, y + 8, 5, sql(
-        "A", f"SELECT count(*) FROM asr_segments WHERE {rng}"), unit="none",
-        desc="Number of stored transcript segments (≈ 8–10 s of speech each) in the time range."))
-    out.append(stat(107, "Refined share (range)", 19, y + 8, 5, sql(
-        "A", f"SELECT avg(CASE WHEN pass='refined' THEN 1.0 ELSE 0.0 END) FROM asr_segments "
-             f"WHERE {rng}"),
-        desc="Share of segments whose REFINE pass completed (the rest keep FAST text; "
-             "refine_skipped is flagged)."))
-    out.append(stat(108, "Measured word accuracy — FAST (reference set)", 14, y + 12, 5, sql(
+    out.append(stat(121, "Text delay · last 5 min", 2 * W, y, W, {
+        "refId": "A", "datasource": PROM,
+        "expr": "histogram_quantile(0.5, sum by (le) "
+                "(rate(stt_latency_speech_end_to_final_seconds_bucket[5m])))"},
+        unit="s", decimals=1, ds=PROM,
+        thresholds=[{"color": "green", "value": None}, {"color": "orange", "value": 15},
+                    {"color": "red", "value": 60}],
+        desc="Median time from the end of a speech segment to its live (FAST) text, last 5 "
+             "minutes. Prometheus histogram estimate (buckets up to 300 s)."))
+    out.append(stat(108, "Word accuracy · test set", 3 * W, y, W, sql(
         "A", "SELECT 1 - value FROM accuracy_results WHERE kind='bench' AND metric='wer' "
              "AND config LIKE 'large-v3-turbo int8 b1 seg10%' ORDER BY recorded_at DESC LIMIT 1"),
         decimals=1, thresholds=CONF_STEPS,
-        desc="1 − WER against hand-made reference transcripts (stt bench → stt record-accuracy). "
-             "Read speech (FLEURS) until broadcast references exist."))
-    out.append(stat(109, "Words ≥ 90% conf: measured correct", 19, y + 12, 5, sql(
+        desc="1 − WER of the live (FAST) configuration against hand-made reference transcripts "
+             "(stt bench → stt record-accuracy). Read speech (FLEURS) until broadcast "
+             "references exist."))
+    out.append(stat(109, "Sure words correct · test", 4 * W, y, W, sql(
         "A", "SELECT value FROM accuracy_results WHERE kind='calibration_word' "
              "AND metric='precision' AND threshold BETWEEN 0.899 AND 0.901 "
              "ORDER BY recorded_at DESC LIMIT 1"),
         decimals=1, thresholds=CONF_STEPS,
-        desc="Of the words the model rated ≥ 90% confident, the share that matched the reference "
+        desc="'Sure' = words the model rated ≥ 90% confident. Share of them that matched the reference "
              "(bench/calibration.py)."))
-    out.append(stat(110, "Words ≥ 90% conf: share of all words", 14, y + 16, 5, sql(
+    out.append(stat(110, "Sure words share · test", 5 * W, y, W, sql(
         "A", "SELECT value FROM accuracy_results WHERE kind='calibration_word' "
              "AND metric='kept_share' AND threshold BETWEEN 0.899 AND 0.901 "
              "ORDER BY recorded_at DESC LIMIT 1"), decimals=1,
         desc="How many of all words the model rated ≥ 90 % confident (reference set)."))
-    out.append(stat(111, "Refine skipped (range)", 19, y + 16, 5, sql(
+    y += 4
+    # Row 2: stored transcript in the dashboard time range (PostgreSQL)
+    rng = f"$__timeFilter(start_utc) AND {CH_FILTER}"
+    out.append(stat(106, "Segments · range", 0, y, W, sql(
+        "A", f"SELECT count(*) FROM asr_segments WHERE {rng}"), unit="none",
+        desc="Number of stored transcript segments (≈ 8–10 s of speech each) in the time range."))
+    out.append(stat(104, "Confidence · range", W, y, W, sql(
+        "A", f"SELECT avg(confidence) FROM asr_segments WHERE {rng}"),
+        decimals=1, thresholds=CONF_STEPS,
+        desc="Average model confidence of stored segments in the selected time range."))
+    out.append(stat(105, "≥ min confidence · range", 2 * W, y, W, sql(
+        "A", f"SELECT avg(CASE WHEN confidence >= $min_conf THEN 1.0 ELSE 0.0 END) "
+             f"FROM asr_segments WHERE {rng}"),
+        desc="Share of stored segments at or above the Min confidence variable."))
+    out.append(stat(107, "Re-checked · range", 3 * W, y, W, sql(
+        "A", f"SELECT avg(CASE WHEN pass='refined' THEN 1.0 ELSE 0.0 END) FROM asr_segments "
+             f"WHERE {rng}"),
+        desc="Share of segments whose REFINE pass completed (the rest keep FAST text; "
+             "refine_skipped is flagged)."))
+    out.append(stat(111, "Re-check skipped · range", 4 * W, y, W, sql(
         "A", f"SELECT count(*) FROM asr_segments WHERE {rng} "
              "AND EXISTS (SELECT 1 FROM unnest(flags) f WHERE f LIKE 'refine_skipped%')"),
         unit="none", desc="Segments whose second pass was skipped because the CPU was busy "
                           "(they keep the live FAST text)."))
-    y += 20
+    out.append(stat(122, "Audio skipped · range", 5 * W, y, W, sql(
+        "A", f"SELECT coalesce(sum((details->>'duration_s')::float), 0) FROM stream_events "
+             f"WHERE $__timeFilter(at_utc) AND {CH_FILTER} AND type = 'fast_skipped'"),
+        unit="s", decimals=0,
+        thresholds=[{"color": "green", "value": None}, {"color": "red", "value": 1}],
+        desc="Seconds of speech not transcribed because the machine was overloaded "
+             "(asr.fast_max_lag_s load shedding). 0 = nothing skipped."))
+    y += 4
     out.append({
         "id": 112, "type": "table",
         "title": "Transcript — click the text to open that moment with video",
@@ -151,7 +177,7 @@ def panels() -> list[dict]:
             {"matcher": {"id": "byName", "options": "text"},
              "properties": [{"id": "links", "value": [{
                  "title": "Open this moment with video",
-                 "url": UI + "/?ch=${__data.fields.channel_id}&t=${__data.fields.t}",
+                 "url": UI + "/ui/archive?ch=${__data.fields.channel_id}&t=${__data.fields.t}",
                  "targetBlank": True}]}]},
         ]},
         "options": {"showHeader": True, "cellHeight": "md"},
@@ -197,8 +223,8 @@ def templating() -> dict:
          "description": "Where the live-stt web UI is reachable from your browser "
                         "(e.g. http://your-server:8000)."},
         {"name": "channel", "label": "Channel", "type": "query", "datasource": PG,
-         "query": "SELECT id FROM channels ORDER BY id", "refresh": 1, "multi": True,
-         "includeAll": True, "current": {"text": "All", "value": "$__all"}},
+         "query": "SELECT id FROM channels WHERE enabled ORDER BY id", "refresh": 1,
+         "multi": False, "includeAll": False, "current": {}},  # one channel per view
         {"name": "min_conf", "label": "Min confidence", "type": "custom",
          "query": "0,0.8,0.9,0.95", "current": {"text": "0.9", "value": "0.9"},
          "options": [{"text": v, "value": v, "selected": v == "0.9"}
@@ -213,7 +239,8 @@ OLD_DESCRIPTIONS = {  # shown in the panel's (i) tooltip
        "can be minutes behind or empty during continuous speech.",
     3: "Time from speech start to the first partial caption (only in streaming mode; empty in "
        "segment mode).",
-    4: "Age of the oldest waiting transcription job. FAST lag growing without limit = overloaded.",
+    4: "Age of the oldest waiting transcription job. FAST lag growing without limit = overloaded "
+       "(with asr.fast_max_lag_s set, older live audio is skipped and counted as 'Audio skipped').",
     5: "How many transcription jobs are waiting. FAST should stay near 0–2; REFINE may grow "
        "(it is capped and older work is skipped, flagged refine_skipped).",
     6: "Real-time factor: seconds of compute per second of audio. Below 1 = faster than real time.",

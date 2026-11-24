@@ -18,6 +18,7 @@ asr:
   batched: false
   pack_s: 28
   refine_max_lag_s: 1800
+  fast_max_lag_s: 120      # overloaded host: live text stays ≤ ~2 min behind; skipped audio is logged as a gap
 
 streaming:
   mode: segment

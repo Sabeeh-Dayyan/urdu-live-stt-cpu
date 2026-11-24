@@ -8,8 +8,9 @@ Real-time **Urdu (and Urdu–English code-switched) speech-to-text for live tele
 as MPEG-TS over UDP (unicast or multicast). It produces:
 - live captions within seconds, and a more careful second pass that replaces them;
 - sentence-level UTC timestamps derived from the stream's own clock;
-- a web player that shows the channel's video next to the transcript (click a sentence to replay
-  that moment);
+- a clean web page (light theme, dark on request) with the channel's **video and transcript side by
+  side**, metric cards in a row below, and a **Go to** box for any date and time (click a sentence
+  to replay that moment);
 - a **video archive**: watch any past time range (e.g. 14:00–15:00) with its transcript, and
   download it as MP4;
 - **search and topics**: find every mention of a word or a saved topic (e.g. "Prime Minister" =
@@ -131,7 +132,7 @@ and streaming mode (see the GPU edition); on this CPU, streaming mode falls >100
 | 4.5 h soak, looping programme with a timestamp reset every loop | 0 crashes or restarts, **0 lost segments** (1 868 emitted, 1 867 done, 2 in flight at stop). Worker/persister/API memory flat; ASR memory +≈130 MB/h (open issue) |
 | Clock | median drift −50 ms; re-anchors on every discontinuity |
 | Word timestamps vs true speech onsets (file input) | 0.13–0.21 s |
-| Automated tests | 201 unit + integration tests (property-based, real Redis/Postgres, real ffmpeg streams, live UDP, real model end-to-end) |
+| Automated tests | 208 unit + integration tests (property-based, real Redis/Postgres, real ffmpeg streams, live UDP, real model end-to-end) |
 
 ### Capacity
 
@@ -181,12 +182,12 @@ open http://localhost:8000
 
 | Feature | How |
 |---|---|
-| Live text + video | `http://SERVER:8000`: sentence timestamps, click a sentence to play the video from that moment, **LIVE** returns to the live edge. Confidence filter (default ≥ 90 %), low-confidence words underlined |
-| Watch a time range | **Archive & search** page: channel + date + from/to → video and transcript side by side, click any sentence to seek, download the video (MP4/TS) and transcript. API: `GET /hls/{id}/archive.m3u8?from=&to=`, `GET /channels/{id}/clip?from=&to=&format=mp4`, `GET /channels/{id}/video/coverage`. Video is kept `relay.archive_hours` (default 24 h on servers) |
+| Live text + video | `http://SERVER:8000`: video and transcript side by side (one channel; a picker appears only if several are enabled), sentence timestamps, click a sentence to replay it, **Back to live** returns. **Go to** opens any date/time. Words below 90 % confidence are underlined; "only clear sentences" hides the rest. Cards below: delay, model confidence, clear sentences, tested accuracy, stream status. ☾ Dark / ☀ Light in the top bar, A−/A+ for text size |
+| Watch a time range | **Find a moment** page: channel + date + from/to → video and transcript side by side, click any sentence to seek, download the video (MP4/TS) and transcript. API: `GET /hls/{id}/archive.m3u8?from=&to=`, `GET /channels/{id}/clip?from=&to=&format=mp4`, `GET /channels/{id}/video/coverage`. Video is kept `relay.archive_hours` (default 24 h on servers) |
 | Find a speech / topic | same page: words (`a \| b`) or a saved topic from `config/topics/topics.yaml`; hits a few minutes apart are grouped into occurrences with a **Watch** button. API: `GET /search?q=…&topic=…&from=&to=&channel=` → `results` + `clusters` |
 | Reports | **Reports** page: channel(s) or an uploaded file, custom period or *overall*, optional full transcript → HTML (print to PDF), Markdown or JSON. API: `GET /reports?channel=&from=&to=&format=html\|md\|json&transcript=true&topics=` |
-| Upload a file | **Upload video** page (drag and drop) or `curl -T clip.mp4 -H "Authorization: Bearer $STT_API_TOKEN" "http://SERVER:8000/uploads?filename=clip.mp4"`. Transcribed with the REFINE decoder after live work; viewer with clickable transcript, exports, report |
-| Channels | **Channels** page: add a stream URL (udp, rtp, srt, rtsp, rtmp, http(s)/HLS), edit, enable/disable, delete; the worker follows within ~10 s. API: `GET/POST /channels`, `PATCH/DELETE /channels/{id}` |
+| Upload a file | **Upload a file** page (drag and drop) or `curl -T clip.mp4 -H "Authorization: Bearer $STT_API_TOKEN" "http://SERVER:8000/uploads?filename=clip.mp4"`. Transcribed with the REFINE decoder after live work; viewer with clickable transcript, exports, report |
+| Channels | **Channel setup** page: add a stream URL (udp, rtp, srt, rtsp, rtmp, http(s)/HLS), edit, enable/disable, delete; the worker follows within ~10 s. API: `GET/POST /channels`, `PATCH/DELETE /channels/{id}` |
 | Everything in one place | **System & links** page: process status, ASR queues, links to Grafana, Prometheus, Swagger/ReDoc, and a clickable list of every API endpoint (read live from OpenAPI) |
 | Export | buttons per channel, or `GET /channels/{id}/export?format=srt\|vtt\|csv\|txt\|json&from=&to=&min_conf=&tz=Asia/Karachi` |
 | Live events | `WS /ws/live?channels=a,b` (`partial` / `final` / `refined` / `refine_skipped`, keyed by `segment_id`) |
