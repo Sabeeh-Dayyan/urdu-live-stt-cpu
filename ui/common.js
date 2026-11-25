@@ -200,6 +200,7 @@ function sentenceRows(container, sents, { label, onClick, terms, minConf = 0 } =
     else s.ws.forEach((w, i) => {
       if (i) txt.appendChild(document.createTextNode(" "));
       const sp = document.createElement("span"); sp.textContent = wordOf(w)[0];
+      if (wordOf(w)[1] != null) sp.dataset.s = wordOf(w)[1];
       if (typeof w.p === "number" && w.p < LOW_WORD) { sp.className = "lowp"; sp.title = `word confidence ${Math.round(w.p * 100)}%`; }
       txt.appendChild(sp);
     });
@@ -211,15 +212,29 @@ function sentenceRows(container, sents, { label, onClick, terms, minConf = 0 } =
   container.replaceChildren(frag);
   return hidden;
 }
-function markPlaying(container, t) {   // highlight the sentence being played (t = epoch)
+// Highlight the sentence (and word) being played at epoch t; keep it centred in the transcript box
+// (scrolls only the box, never the page). opts.scroll=false: highlight only (user is reading).
+function markPlaying(container, t, opts = {}) {
+  const scroll = opts.scroll !== false;
   let cur = null;
   for (const r of container.querySelectorAll(".sent")) { if (parseFloat(r.dataset.t) <= t + 0.05) cur = r; else break; }
   for (const r of container.querySelectorAll(".sent.hi")) if (r !== cur) r.classList.remove("hi");
-  if (cur && !cur.classList.contains("hi")) {
-    cur.classList.add("hi");
-    const box = container.getBoundingClientRect(), rb = cur.getBoundingClientRect();
-    if (rb.top < box.top || rb.bottom > box.bottom) cur.scrollIntoView({ block: "nearest" });
+  for (const w of container.querySelectorAll(".cw")) w.classList.remove("cw");
+  if (!cur) return null;
+  cur.classList.add("hi");
+  const spoken = t <= parseFloat(cur.dataset.e) + 1.0;   // video is inside this sentence
+  cur.classList.toggle("waiting", !spoken);
+  if (spoken) {
+    let cw = null;
+    for (const w of cur.querySelectorAll("[data-s]")) { if (parseFloat(w.dataset.s) <= t) cw = w; else break; }
+    if (cw) cw.classList.add("cw");
   }
+  if (scroll) {
+    const box = container.getBoundingClientRect(), rb = cur.getBoundingClientRect();
+    const delta = rb.top - box.top - Math.max(0, (box.height - rb.height) / 2);
+    if (Math.abs(delta) > 6) container.scrollTo({ top: container.scrollTop + delta, behavior: opts.instant ? "auto" : "smooth" });
+  }
+  return cur;
 }
 
 // ---- HLS (archive VOD playlists carry PROGRAM-DATE-TIME)

@@ -182,7 +182,9 @@ function renderT() {
   });
   if (hidden) $("tinfo").textContent += ` · ${hidden} below the confidence filter hidden`;
 }
-video.addEventListener("timeupdate", () => { const t = hlsTimeToEpoch(hls, video); if (t) markPlaying(lines, t); });
+let holdA = 0;   // the user scrolled the transcript: stop following the video for 15 s
+for (const ev of ["wheel", "touchmove", "keydown"]) lines.addEventListener(ev, () => { holdA = Date.now() + 15000; }, { passive: true });
+video.addEventListener("timeupdate", () => { const t = hlsTimeToEpoch(hls, video); if (t) markPlaying(lines, t, { scroll: Date.now() > holdA }); });
 
 // buttons
 $("load").onclick = () => { terms = []; load(); };

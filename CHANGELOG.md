@@ -1,5 +1,17 @@
 # Changelog
 
+## 0.2.2 — 2026-11-25
+- **Transcript follows the video**: the sentence (and word) being played is highlighted and kept
+  centred; scrolling pauses following for 15 s (⦿ Follow video resumes). **Sync video with text**
+  (on by default) plays live video behind the live edge by the measured text delay (90th
+  percentile + 8 s, 12–120 s), so the highlighted line is what you hear.
+- **Channel setup asks only for the stream link** (`239.1.1.1:5000` is accepted; multicast gets `@`);
+  ID, name, Urdu audio track and language are automatic, the rest is under "Advanced options".
+- **Grafana redesigned**: header with app links and a Light/Dark switch clear of Grafana's hover
+  menu (the embedded page follows the theme); "Live now" cards with sparklines (stream, text delay,
+  behind live, confidence, speech share, segments/min); live trend charts; accuracy and stored-range
+  sections; pipeline details collapsed.
+
 ## 0.2.1 — 2026-11-25
 - **New look**: light theme by default with a dark switch; one channel per page; video and transcript
   **side by side** (no scrolling), metric cards in a row below, larger adjustable Urdu text, plain

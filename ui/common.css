@@ -106,12 +106,14 @@ table.t th { font-size: 12px; color: var(--muted); font-weight: 600; }
 
 /* ---- transcript lines */
 .urdu { font-family: "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Noto Naskh Arabic", serif; font-size: 18px; line-height: 2.1; unicode-bidi: plaintext; }
-.lines { overflow-y: auto; max-height: 60vh; padding: 2px 2px; }
+.lines { position: relative; overflow-y: auto; max-height: 60vh; padding: 2px 2px; }
 .sent { display: grid; grid-template-columns: 82px minmax(0, 1fr) 46px; gap: 10px; align-items: baseline; padding: 6px 8px;
         border-radius: 10px; cursor: pointer; border-bottom: 1px solid var(--line); }
 .sent:last-child { border-bottom: 0; }
 .sent:hover { background: var(--panel2); }
-.sent.hi { background: var(--hi); }
+.sent.hi { background: var(--soft); box-shadow: inset 4px 0 0 var(--accent); }
+.sent.hi.waiting { box-shadow: inset 4px 0 0 var(--muted); }
+.sent .cw { background: var(--hi); border-radius: 4px; box-shadow: 0 0 0 2px var(--hi); }
 .sent .t { font-size: 13px; color: var(--accent); font-variant-numeric: tabular-nums; direction: ltr; display: flex; flex-direction: column; font-weight: 600; }
 .sent .t small { font-size: 11px; color: var(--muted); font-weight: 400; }
 .sent .txt { font-family: "Noto Nastaliq Urdu", "Jameel Noori Nastaleeq", "Noto Naskh Arabic", serif; font-size: var(--urdu-size);

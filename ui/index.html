@@ -24,6 +24,7 @@
   .tcard .chead { margin-bottom: 4px; }
   .legend { font-size: 12.5px; color: var(--muted); margin: 0 0 6px; }
   .legend .lowp { color: var(--ink); }
+  .hi-sample { background: var(--soft); box-shadow: inset 3px 0 0 var(--accent); padding: 0 5px; border-radius: 3px; color: var(--ink); }
   .latest { position: absolute; inset: auto 24px 16px auto; display: none; box-shadow: var(--shadow); }
   .tcard { position: relative; }
   .seg-note { font-size: 12.5px; color: var(--muted); text-align: center; padding: 6px; }
@@ -64,7 +65,8 @@
       <div class="vid"><video id="video" muted playsinline controls></video><div class="badge" id="badge">● LIVE</div><div class="msg" id="vmsg"></div></div>
       <div class="vtools">
         <button id="liveBtn" class="primary" title="Back to the live picture and newest text">● Back to live</button>
-        <span class="muted small" id="vnote">Video starts muted, use the speaker icon for sound.</span>
+        <label class="small muted" title="Text appears some seconds after it is spoken. With this on, the live video plays that much behind, so the highlighted line is what you hear."><input type="checkbox" id="syncOn" checked> sync video with text</label>
+        <span class="muted small" id="vnote">Muted at start: use the speaker icon for sound.</span>
         <span class="grow"></span>
         <label class="small muted">Save transcript
           <select id="exRange">
@@ -88,10 +90,10 @@
         </label>
         <span class="sz"><button id="szDown" title="Smaller text">A−</button> <button id="szUp" title="Larger text">A+</button></span>
       </div>
-      <p class="legend">Newest at the bottom. Click a line to replay it. <span class="lowp">Dotted underline</span> = the model is unsure about that word.</p>
+      <p class="legend"><span class="hi-sample">Highlighted</span> = what the video is playing now (it follows the video). Click a line to replay it. <span class="lowp">Dotted underline</span> = the model is unsure about that word.</p>
       <div class="lines" id="lines"><div class="empty">Waiting for speech…</div></div>
       <div class="seg-note" id="hiddenN"></div>
-      <button class="latest" id="latestBtn">↓ Newest</button>
+      <button class="latest primary" id="latestBtn">⦿ Follow video</button>
     </div>
   </div>
 
@@ -118,7 +120,12 @@ const $ = (id) => document.getElementById(id);
 const params = new URLSearchParams(location.search);
 nav("live");
 const video = $("video"), lines = $("lines");
-let cid = null, hls = null, holdScroll = false, hiT = null, pending = false;
+let cid = null, hls = null, pending = false;
+let vidT = null;           // epoch time the video is showing
+let holdUntil = 0;         // the user is reading elsewhere in the transcript until then (ms)
+let replay = false;        // playing an earlier moment, not live
+const held = () => Date.now() < holdUntil;
+try { $("syncOn").checked = localStorage.getItem("stt_sync") !== "0"; } catch (e) { /* default on */ }
 const segs = new Map(), stats = [];
 let nSeg = 0;
 if (params.get("min_conf") && parseFloat(params.get("min_conf")) >= 0.9 && params.get("embed") !== "1") $("onlyClear").checked = true;
@@ -126,7 +133,19 @@ const minConf = () => $("onlyClear").checked ? 0.9 : 0;
 
 // ---- video (HLS from the channel worker; EXT-X-PROGRAM-DATE-TIME = wall clock)
 function vmsg(t) { $("vmsg").textContent = t || ""; $("vmsg").style.display = t ? "block" : "none"; }
-function badge(mode) { const b = $("badge"); b.style.display = mode ? "block" : "none"; b.textContent = mode === "live" ? "● LIVE" : "⟲ REPLAY"; b.className = "badge" + (mode === "live" ? "" : " replay"); }
+function badge(mode) {
+  const b = $("badge"); b.style.display = mode ? "block" : "none";
+  b.textContent = mode === "live" ? ($("syncOn").checked ? `● LIVE · −${syncDelay()} s, in step with text` : "● LIVE") : "⟲ REPLAY";
+  b.className = "badge" + (mode === "live" ? "" : " replay");
+}
+// How far behind the live edge to play so the text for what is on screen has already arrived:
+// 90th percentile of measured live delay + 8 s (one sentence), 12–120 s; 30 s until measured.
+function syncDelay() {
+  const lats = stats.slice(-STATS_N).map(x => x.lat).filter(x => x != null).sort((a, b) => a - b);
+  const d = lats.length >= 5 ? lats[Math.floor(lats.length * 0.9)] + 8 : 30;
+  return Math.round(Math.max(12, Math.min(120, d)));
+}
+function liveEdge() { return video.seekable.length ? video.seekable.end(video.seekable.length - 1) : null; }
 function initVideo() {
   const src = `/hls/${encodeURIComponent(cid)}/index.m3u8`;
   if (window.Hls && Hls.isSupported()) {
@@ -136,22 +155,22 @@ function initVideo() {
                      setTimeout(() => { h.destroy(); hls = null; initVideo(); }, 10000); }
     });
     h.on(Hls.Events.MANIFEST_PARSED, () => { vmsg(""); badge("live"); video.play().catch(() => {}); });
+    h.once(Hls.Events.LEVEL_LOADED, () => setTimeout(() => { if (!replay) goLive(); }, 300));
     h.loadSource(src); h.attachMedia(video); hls = h;
   } else if (video.canPlayType("application/vnd.apple.mpegurl")) {   // Safari: native HLS
     video.src = src; video.play().catch(() => {}); badge("live");
   } else vmsg("This browser cannot play the video stream.");
 }
 function goLive() {
-  vmsg(""); badge("live"); holdScroll = false; hiT = null;
-  for (const r of lines.querySelectorAll(".sent.hi")) r.classList.remove("hi");
-  lines.scrollTop = lines.scrollHeight;
-  if (hls && hls.liveSyncPosition != null) video.currentTime = hls.liveSyncPosition;
-  else if (video.seekable.length) video.currentTime = video.seekable.end(video.seekable.length - 1) - 6;
+  vmsg(""); replay = false; holdUntil = 0; badge("live");
+  const end = liveEdge();
+  if (end != null) video.currentTime = Math.max(video.seekable.start(0), end - ($("syncOn").checked ? syncDelay() : 6));
+  else if (hls && hls.liveSyncPosition != null) video.currentTime = hls.liveSyncPosition;
   video.play().catch(() => {});
 }
 function seekTo(t) {   // epoch seconds; false if outside the live video window
   if (!hlsSeekEpoch(hls, video, t)) return false;
-  badge("replay"); vmsg(`Replaying from ${fmtLocal(t)}. Press "Back to live" to return.`);
+  replay = true; holdUntil = 0; badge("replay"); vmsg(`Replaying from ${fmtLocal(t)}. Press "Back to live" to return.`);
   video.muted = false; video.play().catch(() => {});
   return true;
 }
@@ -160,7 +179,6 @@ function openArchive(t) { location.href = `/ui/archive?ch=${encodeURIComponent(c
 // ---- transcript
 function render() {
   pending = false;
-  const atBottom = lines.scrollHeight - lines.scrollTop - lines.clientHeight < 80;
   const rows = [...segs.values()].sort((a, b) => a.start_utc - b.start_utc).slice(-MAX_SEGS);
   const sents = assemble(rows);
   const top = lines.scrollTop;
@@ -169,26 +187,39 @@ function render() {
     const hidden = sentenceRows(lines, sents, {
       minConf: minConf(),
       label: (s) => fmtLocal(s.s),
-      onClick: (s, row) => { hiT = s.s; holdScroll = true; markPlaying(lines, s.s);
-                             if (!seekTo(s.s)) openArchive(s.s); },
+      onClick: (s) => { if (seekTo(s.s)) { vidT = s.s; markPlaying(lines, s.s); } else openArchive(s.s); },
     });
     $("hiddenN").textContent = hidden ? `${hidden} unclear sentence(s) hidden` : "";
-    if (hiT != null) markPlaying(lines, hiT);
   }
   const sc = sents.slice(-STATS_N).map(s => s.c);
   setMetric("mClear", sc.length ? `${Math.round(100 * sc.filter(c => c != null && c >= 0.9).length / sc.length)}%` : "–",
             sc.length ? lvl(sc.filter(c => c != null && c >= 0.9).length / sc.length, 0.8, 0.6) : "");
-  if (atBottom && !holdScroll) lines.scrollTop = lines.scrollHeight; else lines.scrollTop = top;
-  $("latestBtn").style.display = (lines.scrollHeight - lines.scrollTop - lines.clientHeight > 200) ? "block" : "none";
+  lines.scrollTop = top;
+  if (vidT != null) markPlaying(lines, vidT, { scroll: !held(), instant: true });
+  else if (!held()) lines.scrollTop = lines.scrollHeight;
 }
 function schedule() { if (!pending) { pending = true; requestAnimationFrame(render); } }
-lines.addEventListener("scroll", () => {
-  const far = lines.scrollHeight - lines.scrollTop - lines.clientHeight > 200;
-  $("latestBtn").style.display = far ? "block" : "none";
-  if (!far && hiT == null) holdScroll = false;
+// The user scrolls the transcript → stop following for 15 s (or until "Follow video").
+for (const ev of ["wheel", "touchmove", "keydown"]) lines.addEventListener(ev, () => { holdUntil = Date.now() + 15000; $("latestBtn").style.display = "block"; }, { passive: true });
+$("latestBtn").onclick = () => { holdUntil = 0; $("latestBtn").style.display = "none"; if (vidT != null) markPlaying(lines, vidT); else lines.scrollTop = lines.scrollHeight; };
+setInterval(() => { if (!held()) $("latestBtn").style.display = "none"; }, 1000);
+video.addEventListener("timeupdate", () => {
+  const t = hlsTimeToEpoch(hls, video);
+  if (t == null) return;
+  vidT = t;
+  markPlaying(lines, t, { scroll: !held() });
+  const end = liveEdge();
+  if (end != null && !replay) badge("live");
+  if (end != null && replay && end - video.currentTime < 20) { replay = false; vmsg(""); badge("live"); }
 });
-$("latestBtn").onclick = () => { holdScroll = false; lines.scrollTop = lines.scrollHeight; };
-video.addEventListener("timeupdate", () => { if (hiT == null) return; const t = hlsTimeToEpoch(hls, video); if (t) markPlaying(lines, t); });
+$("syncOn").onchange = () => { try { localStorage.setItem("stt_sync", $("syncOn").checked ? "1" : "0"); } catch (e) { /* */ } if (!replay) goLive(); };
+// keep the synced delay up to date as the measured text delay changes
+setInterval(() => {
+  const end = liveEdge();
+  if (replay || end == null || !$("syncOn").checked || video.paused) return;
+  const behind = end - video.currentTime, want = syncDelay();
+  if (Math.abs(behind - want) > 12) video.currentTime = Math.max(video.seekable.start(0), end - want);
+}, 30000);
 
 // ---- metrics
 function lvl(v, good, mid) { return v >= good ? "good" : v >= mid ? "mid" : "bad"; }
@@ -292,7 +323,7 @@ $("gGo").onclick = () => {
   const t = fromInputs($("gDate").value, $("gTime").value);
   if (t == null) return toast("Pick a date and a time", true);
   if (t > Date.now() / 1000 + 5) return toast("That time is in the future", true);
-  if (Date.now() / 1000 - t < LIVE_WIN_S - 30 && seekTo(t)) { hiT = t; holdScroll = true; markPlaying(lines, t); return; }
+  if (Date.now() / 1000 - t < LIVE_WIN_S - 30 && seekTo(t)) { vidT = t; markPlaying(lines, t); return; }
   openArchive(t);
 };
 $("sForm").onsubmit = (e) => { e.preventDefault(); const q = $("q").value.trim(); if (q) location.href = `/ui/archive?ch=${encodeURIComponent(cid)}&q=${encodeURIComponent(q)}`; };
@@ -312,7 +343,7 @@ $("chSel").onchange = () => { location.search = `?ch=${encodeURIComponent($("chS
   await loadHistory();
   connect();
   const t = parseFloat(params.get("t"));
-  if (!isNaN(t)) { hiT = t; holdScroll = true; markPlaying(lines, t); const go = (n) => { if (seekTo(t)) return; if (n > 0) setTimeout(() => go(n - 1), 1500); else openArchive(t); }; go(5); }
+  if (!isNaN(t)) { replay = true; vidT = t; markPlaying(lines, t); const go = (n) => { if (seekTo(t)) return; if (n > 0) setTimeout(() => go(n - 1), 1500); else openArchive(t); }; go(5); }
   pollStream(); setInterval(pollStream, 10000);
   loadAccuracy();
 })();
