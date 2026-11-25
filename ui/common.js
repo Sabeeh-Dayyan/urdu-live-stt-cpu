@@ -91,15 +91,21 @@ function toast(msg, bad) {
 }
 
 // ---- theme (light by default, dark on request; remembered per browser). Runs before first paint.
+// Order: explicit ?theme=light|dark (e.g. Grafana's Light/Dark links) → the viewer's own choice →
+// inside Grafana (?embed=1 / ?theme=auto) the computer's light/dark setting → light.
 function getTheme() {
-  const q = new URLSearchParams(location.search).get("theme");
-  if (q === "light" || q === "dark") return q;
-  try { return localStorage.getItem("stt_theme") || "light"; } catch (e) { return "light"; }
+  const q = new URLSearchParams(location.search);
+  const t = q.get("theme");
+  if (t === "light" || t === "dark") return t;
+  try { const v = localStorage.getItem("stt_theme"); if (v === "light" || v === "dark") return v; } catch (e) { /* */ }
+  if (t === "auto" || q.get("embed") === "1")
+    return window.matchMedia && matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light";
+  return "light";
 }
 function setTheme(t) {
   document.documentElement.dataset.theme = t;
   try { localStorage.setItem("stt_theme", t); } catch (e) { /* private mode */ }
-  const b = document.getElementById("navTheme");
+  const b = document.getElementById("navTheme") || document.getElementById("embTheme");
   if (b) { b.textContent = t === "dark" ? "☀ Light" : "☾ Dark"; b.title = `Switch to ${t === "dark" ? "light" : "dark"} theme`; }
 }
 document.documentElement.dataset.theme = getTheme();

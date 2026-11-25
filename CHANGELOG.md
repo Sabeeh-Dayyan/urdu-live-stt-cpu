@@ -1,5 +1,12 @@
 # Changelog
 
+## 0.2.3 — 2026-11-25
+- Grafana: live video and transcript first, live stat cards directly below; the embedded page
+  follows the computer's light/dark setting (Grafana too, `GF_USERS_DEFAULT_THEME=system`) and has
+  its own ☾/☀ button; the header's Light/Dark links switch both.
+- UI files are served with `Cache-Control: no-cache` (ETag revalidation), so browsers never show a
+  stale page after an update.
+
 ## 0.2.2 — 2026-11-25
 - **Transcript follows the video**: the sentence (and word) being played is highlighted and kept
   centred; scrolling pauses following for 15 s (⦿ Follow video resumes). **Sync video with text**

@@ -112,6 +112,17 @@ def panels() -> list[dict]:
     out = [header()]
     y = 2
     # ---------------------------------------------------------------- live now
+    out.append({
+        "id": 101, "type": "text", "title": "Live video & transcript",
+        "description": "The live page: video and transcript side by side. The highlighted line "
+                       "follows the video. Click any line to replay it; 'Go to' opens any time.",
+        "gridPos": {"x": 0, "y": y, "w": 24, "h": 20},
+        "options": {"mode": "html", "content":
+                    f'<iframe src="{UI}/?embed=1&ch=${{channel}}&theme=${{ui_theme}}" '
+                    'style="width:100%;height:100%;border:0" allow="autoplay; fullscreen">'
+                    '</iframe>'},
+    })
+    y += 20
     out.append(row(131, "● Live now", y))
     y += 1
     up_map = [{"type": "value", "options": {
@@ -147,17 +158,6 @@ def panels() -> list[dict]:
         ds=PROM, h=5, graph="area",
         desc="Speech segments sent for transcription in the last minute."))
     y += 5
-    out.append({
-        "id": 101, "type": "text", "title": "Live video & transcript",
-        "description": "The live page: video and transcript side by side. The highlighted line "
-                       "follows the video. Click any line to replay it; 'Go to' opens any time.",
-        "gridPos": {"x": 0, "y": y, "w": 24, "h": 19},
-        "options": {"mode": "html", "content":
-                    f'<iframe src="{UI}/?embed=1&ch=${{channel}}&theme=${{ui_theme}}" '
-                    'style="width:100%;height:100%;border:0" allow="autoplay; fullscreen">'
-                    '</iframe>'},
-    })
-    y += 19
     # ---------------------------------------------------------------- live trends
     out.append(row(138, "Live trends", y))
     y += 1
@@ -310,9 +310,9 @@ def templating() -> dict:
         {"name": "channel", "label": "Channel", "type": "query", "datasource": PG,
          "query": "SELECT id FROM channels WHERE enabled ORDER BY id", "refresh": 1,
          "multi": False, "includeAll": False, "current": {}},  # one channel per view
-        {"name": "ui_theme", "type": "custom", "hide": 2, "query": "light,dark",
-         "current": {"text": "light", "value": "light"},
-         "options": [{"text": v, "value": v, "selected": v == "light"} for v in ("light", "dark")]},
+        {"name": "ui_theme", "type": "custom", "hide": 2, "query": "auto,light,dark",
+         "current": {"text": "auto", "value": "auto"},   # auto = follow the computer's setting
+         "options": [{"text": v, "value": v, "selected": v == "auto"} for v in ("auto", "light", "dark")]},
         {"name": "min_conf", "label": "Min confidence", "type": "custom",
          "query": "0,0.8,0.9,0.95", "current": {"text": "0.9", "value": "0.9"},
          "options": [{"text": v, "value": v, "selected": v == "0.9"}

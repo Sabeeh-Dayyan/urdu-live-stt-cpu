@@ -37,7 +37,7 @@
     .hero .grow { display: none; }
   }
   body.embed .wrap { padding: 8px; max-width: none; }
-  body.embed .help, body.embed .note, body.embed .search { display: none; }
+  body.embed .help, body.embed .note, body.embed .search, body.embed .metrics { display: none; }   /* Grafana shows the stats */
   body.embed .hero { margin-bottom: 8px; }
   body.embed .hero h1 { font-size: 17px; }
 </style>
@@ -47,6 +47,7 @@
   <div class="hero">
     <h1><span id="chName">Live</span> <span id="conn" class="pill">connecting…</span></h1>
     <select id="chSel" title="Channel"></select>
+    <button id="embTheme" class="pill" hidden></button>
     <span class="grow"></span>
     <div class="goto" title="Watch any earlier moment with its transcript">
       <span>Go to</span>
@@ -329,6 +330,11 @@ $("gGo").onclick = () => {
 $("sForm").onsubmit = (e) => { e.preventDefault(); const q = $("q").value.trim(); if (q) location.href = `/ui/archive?ch=${encodeURIComponent(cid)}&q=${encodeURIComponent(q)}`; };
 $("chSel").onchange = () => { location.search = `?ch=${encodeURIComponent($("chSel").value)}`; };
 
+if (EMBED) {   // inside Grafana there is no top bar: own light/dark switch
+  $("embTheme").hidden = false;
+  setTheme(document.documentElement.dataset.theme);
+  $("embTheme").onclick = () => setTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
+}
 (async function start() {
   const now = Date.now() / 1000 - 300, [d, hm] = toInputs(now);
   $("gDate").value = d; $("gTime").value = hm + ":00";
