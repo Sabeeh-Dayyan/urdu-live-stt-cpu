@@ -73,7 +73,7 @@ CONF_STEPS = [{"color": "red", "value": None}, {"color": "orange", "value": 0.8}
               {"color": "green", "value": 0.9}]
 DELAY_STEPS = [{"color": "green", "value": None}, {"color": "orange", "value": 20},
                {"color": "red", "value": 60}]
-CH = 'channel="$channel"'
+ch_sel = 'channel="$channel"'
 PILL = ("padding:5px 12px;border-radius:999px;border:1px solid rgba(128,128,128,.35);"
         "text-decoration:none;font-size:13px;font-weight:500;white-space:nowrap")
 THEME_LINK = ("?orgId=1&theme={t}&var-ui_theme={t}&var-channel=${{channel}}&var-pg=${{pg}}"
@@ -117,14 +117,14 @@ def panels() -> list[dict]:
     up_map = [{"type": "value", "options": {
         "0": {"text": "No signal", "color": "red", "index": 0},
         "1": {"text": "Receiving", "color": "green", "index": 1}}}]
-    out.append(stat(132, "Stream", 0, y, 4, prom(f"max(stt_stream_up{{{CH}}})"), unit="none",
+    out.append(stat(132, "Stream", 0, y, 4, prom(f"max(stt_stream_up{{{ch_sel}}})"), unit="none",
                     ds=PROM, mappings=up_map, color_mode="background", h=5,
                     no_value="No signal", thresholds=[{"color": "red", "value": None},
                                                     {"color": "green", "value": 1}],
                     desc="Is the channel's stream arriving right now (UDP packets decoded)."))
     out.append(stat(133, "Text delay", 4, y, 4, prom(
         f"histogram_quantile(0.5, sum by (le) (rate(stt_latency_speech_end_to_final_seconds_bucket"
-        f"{{{CH}}}[2m])))"), unit="s", decimals=1, ds=PROM, h=5, graph="area",
+        f"{{{ch_sel}}}[2m])))"), unit="s", decimals=1, ds=PROM, h=5, graph="area",
         thresholds=DELAY_STEPS, no_value="waiting for speech",
         desc="Median time from the end of a spoken segment to its live text, last 2 minutes."))
     out.append(stat(134, "Behind live", 8, y, 4, prom(
@@ -133,17 +133,17 @@ def panels() -> list[dict]:
         desc="Age of the oldest audio waiting for transcription. Near 0 = keeping up. "
              "Above asr.fast_max_lag_s (CPU: 120 s) audio is skipped and counted below."))
     out.append(stat(135, "Model confidence", 12, y, 4, prom(
-        f"sum(rate(stt_asr_segment_confidence_sum{{{CH}}}[2m])) / "
-        f"sum(rate(stt_asr_segment_confidence_count{{{CH}}}[2m]))"), decimals=1, ds=PROM, h=5,
+        f"sum(rate(stt_asr_segment_confidence_sum{{{ch_sel}}}[2m])) / "
+        f"sum(rate(stt_asr_segment_confidence_count{{{ch_sel}}}[2m]))"), decimals=1, ds=PROM, h=5,
         graph="area", thresholds=CONF_STEPS,
         desc="Average word probability of the text produced in the last 2 minutes. The model's "
              "own estimate, not verified accuracy."))
-    out.append(stat(136, "Speech in audio", 16, y, 4, prom(f"max(stt_vad_speech_ratio{{{CH}}})"),
+    out.append(stat(136, "Speech in audio", 16, y, 4, prom(f"max(stt_vad_speech_ratio{{{ch_sel}}})"),
                     ds=PROM, h=5, graph="area",
                     desc="Share of the last minute the voice detector heard speech (music, "
                          "ads and silence lower it)."))
     out.append(stat(137, "Segments / min", 20, y, 4, prom(
-        f"sum(increase(stt_segments_emitted_total{{{CH}}}[1m]))"), unit="none", decimals=0,
+        f"sum(increase(stt_segments_emitted_total{{{ch_sel}}}[1m]))"), unit="none", decimals=0,
         ds=PROM, h=5, graph="area",
         desc="Speech segments sent for transcription in the last minute."))
     y += 5
@@ -163,13 +163,13 @@ def panels() -> list[dict]:
     y += 1
     out.append(ts(139, "Text delay (speech end → live text)", 0, y, 12, 8, [
         prom(f"histogram_quantile(0.5, sum by (le) (rate(stt_latency_speech_end_to_final_seconds_"
-             f"bucket{{{CH}}}[1m])))", "A", "median"),
+             f"bucket{{{ch_sel}}}[1m])))", "A", "median"),
         prom(f"histogram_quantile(0.95, sum by (le) (rate(stt_latency_speech_end_to_final_seconds"
-             f"_bucket{{{CH}}}[1m])))", "B", "95 %")], minv=0, steps=DELAY_STEPS,
+             f"_bucket{{{ch_sel}}}[1m])))", "B", "95 %")], minv=0, steps=DELAY_STEPS,
         desc="How long after speech the live text appears (1-minute windows)."))
     out.append(ts(140, "Model confidence", 12, y, 12, 8, [
-        prom(f"sum by (pass) (rate(stt_asr_segment_confidence_sum{{{CH}}}[2m])) / "
-             f"sum by (pass) (rate(stt_asr_segment_confidence_count{{{CH}}}[2m]))", "A",
+        prom(f"sum by (pass) (rate(stt_asr_segment_confidence_sum{{{ch_sel}}}[2m])) / "
+             f"sum by (pass) (rate(stt_asr_segment_confidence_count{{{ch_sel}}}[2m]))", "A",
              "{{pass}}")], unit="percentunit", minv=0.5, maxv=1, steps=CONF_STEPS,
         desc="Average model confidence per pass. A drop often means music, crosstalk or "
              "English speech."))
@@ -179,7 +179,7 @@ def panels() -> list[dict]:
         desc="Age of the oldest waiting job per pass. FAST should stay low; REFINE only runs "
              "when FAST is idle."))
     out.append(ts(142, "Stream bitrate (audio)", 12, y, 12, 7, [
-        prom(f"rate(stt_ingest_bytes_total{{{CH}}}[1m]) * 8", "A", "audio")], unit="bps", minv=0,
+        prom(f"rate(stt_ingest_bytes_total{{{ch_sel}}}[1m]) * 8", "A", "audio")], unit="bps", minv=0,
         desc="Incoming audio bitrate. A flat line at 0 means no packets arrive."))
     y += 7
     # ---------------------------------------------------------------- accuracy

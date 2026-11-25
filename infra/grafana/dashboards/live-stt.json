@@ -2,7 +2,7 @@
  "uid": "live-stt",
  "title": "Urdu Live Transcription · Monitoring",
  "schemaVersion": 39,
- "version": 11,
+ "version": 12,
  "refresh": "5s",
  "time": {
   "from": "now-30m",
