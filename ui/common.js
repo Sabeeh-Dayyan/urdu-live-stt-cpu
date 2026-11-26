@@ -169,6 +169,17 @@ async function mainChannel() {
   return { chans, cur: chans.find(c => c.id === want) || on[0] || chans[0] || null };
 }
 
+// "239.1.1.1:5000" → "udp://@239.1.1.1:5000" (multicast join), "10.0.0.5:5001" → "udp://10.0.0.5:5001"
+function normalizeLink(v) {
+  v = v.trim();
+  if (!v) return "";
+  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(v)) {
+    const host = v.replace(/^@/, "").split(":")[0];
+    const first = parseInt(host.split(".")[0], 10);
+    v = "udp://" + (first >= 224 && first <= 239 ? "@" : "") + v.replace(/^@/, "");
+  }
+  return v;
+}
 // ---- time inputs (local time of the browser)
 function toInputs(t) { const d = new Date(t * 1000); return [`${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`, `${pad(d.getHours())}:${pad(d.getMinutes())}`]; }
 function fromInputs(date, time) { if (!date || !time) return null; const t = new Date(`${date}T${time}`).getTime(); return isNaN(t) ? null : t / 1000; }

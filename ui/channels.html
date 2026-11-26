@@ -52,17 +52,6 @@ const $ = (id) => document.getElementById(id);
 let editing = null, chans = [];
 loadConfig().then(c => { $("schemes").textContent = (c.url_schemes || []).map(s => s + "://").join(" "); });
 
-// "239.1.1.1:5000" → "udp://@239.1.1.1:5000" (multicast join), "10.0.0.5:5001" → "udp://10.0.0.5:5001"
-function normalizeLink(v) {
-  v = v.trim();
-  if (!v) return "";
-  if (!/^[a-z][a-z0-9+.-]*:\/\//i.test(v)) {
-    const host = v.replace(/^@/, "").split(":")[0];
-    const first = parseInt(host.split(".")[0], 10);
-    v = "udp://" + (first >= 224 && first <= 239 ? "@" : "") + v.replace(/^@/, "");
-  }
-  return v;
-}
 function nextId() {
   const used = new Set(chans.map(c => c.id));
   for (let i = 1; i < 1000; i++) if (!used.has("ch" + i)) return "ch" + i;

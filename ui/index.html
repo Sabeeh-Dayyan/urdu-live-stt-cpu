@@ -30,6 +30,10 @@
   .seg-note { font-size: 12.5px; color: var(--muted); text-align: center; padding: 6px; }
   .sz button { padding: 4px 9px; }
   #chSel { display: none; }
+  .linkpill { font-family: ui-monospace, Menlo, monospace; max-width: 420px; overflow: hidden; text-overflow: ellipsis; }
+  .linkpill a { font-family: system-ui, sans-serif; font-weight: 600; margin-inline-start: 6px; }
+  .setlink { border: 2px solid var(--accent); }
+  .setlink h2 { font-size: 19px; }
   @media (max-width: 700px) {
     .hero .goto, .hero .search { flex: 1 1 100%; max-width: 100%; }
     .goto input { flex: 1 1 120px; min-width: 0; }
@@ -48,6 +52,7 @@
     <h1><span id="chName">Live</span> <span id="conn" class="pill">connecting…</span></h1>
     <select id="chSel" title="Channel"></select>
     <button id="embTheme" class="pill" hidden></button>
+    <span class="pill linkpill" id="linkPill" title="The stream this page is transcribing"><span id="linkTxt">…</span> <a href="#" id="linkEdit">✎ Change</a></span>
     <span class="grow"></span>
     <div class="goto" title="Watch any earlier moment with its transcript">
       <span>Go to</span>
@@ -58,6 +63,17 @@
     <form class="search" id="sForm" title="Search all transcripts (opens Find a moment)">
       <input id="q" dir="auto" placeholder="Search words, e.g. وزیراعظم" autocomplete="off">
       <button>Search</button>
+    </form>
+  </div>
+
+  <div class="card setlink" id="setLink" hidden>
+    <h2 id="setTitle">📡 Enter the stream link to start</h2>
+    <p class="muted small" id="setHint">Paste the UDP link of the TV channel (for example <code>udp://@239.1.1.1:5000</code>, or just <code>239.1.1.1:5000</code>).
+      Video and Urdu text start about 20 seconds after the stream arrives.</p>
+    <form class="row" id="setForm">
+      <input id="setUrl" style="flex:1 1 360px;font-size:16px;padding:10px 12px" placeholder="udp://@239.1.1.1:5000" autocomplete="off">
+      <button class="primary" style="font-size:16px;padding:10px 18px">▶ Start transcribing</button>
+      <button type="button" id="setCancel">Cancel</button>
     </form>
   </div>
 
@@ -245,8 +261,13 @@ async function pollStream() {
     const lags = Object.entries(j.components || {}).filter(([k]) => k.startsWith("asr")).map(([, v]) => v.fast_lag_s).filter(v => typeof v === "number");
     const fresh = w && (Date.now() / 1000 - (w.t || 0)) < 30;
     const lag = lags.length ? Math.max(...lags) : null;
-    if (!fresh) setMetric("mStream", "No signal", "bad", "the channel's stream is not being received");
-    else setMetric("mStream", "Receiving", lag != null && lag > 60 ? "mid" : "good",
+    if (!fresh) {
+      setMetric("mStream", "No signal", "bad", `nothing received on ${curUrl || "the stream link"}`);
+      noSignalSince = noSignalSince || Date.now();
+      if (!setOpen && Date.now() - noSignalSince > 20000)
+        showSetLink(true, "📡 No signal: check or change the stream link");
+    } else { noSignalSince = null; if (setOpen && $("setTitle").textContent.startsWith("📡 No signal")) showSetLink(false); }
+    if (fresh) setMetric("mStream", "Receiving", lag != null && lag > 60 ? "mid" : "good",
                    lag != null && lag > 60 ? `computer busy: text ${fmtDur(lag)} behind` : "audio and video arriving normally");
   } catch (e) { setMetric("mStream", "Unknown", "mid", "server not reachable"); }
 }
@@ -328,6 +349,28 @@ $("gGo").onclick = () => {
   openArchive(t);
 };
 $("sForm").onsubmit = (e) => { e.preventDefault(); const q = $("q").value.trim(); if (q) location.href = `/ui/archive?ch=${encodeURIComponent(cid)}&q=${encodeURIComponent(q)}`; };
+// ---- stream link: show it, change it in place (no server files)
+let curUrl = "", noSignalSince = null, setOpen = false;
+function showSetLink(open, why) {
+  setOpen = open; $("setLink").hidden = !open;
+  if (open) { $("setUrl").value = ""; $("setTitle").textContent = why || "📡 Enter the stream link to start"; setTimeout(() => $("setUrl").focus(), 50); }
+}
+$("linkEdit").onclick = (e) => { e.preventDefault(); showSetLink(true, "📡 Change the stream link"); };
+$("setCancel").onclick = () => showSetLink(false);
+$("setForm").onsubmit = async (e) => {
+  e.preventDefault();
+  const url = normalizeLink($("setUrl").value);
+  if (!url) return toast("Paste the stream link first", true);
+  try {
+    if (cid) await api(`/channels/${encodeURIComponent(cid)}`, { method: "PATCH", json: { url, enabled: true } });
+    else { await api("/channels", { method: "POST", json: { id: "ch1", name: "Channel 1", url, audio_track: { index: 0, language: "urd" }, language: "ur", enabled: true } }); cid = "ch1"; }
+    curUrl = url; $("linkTxt").textContent = url; noSignalSince = null;
+    showSetLink(false);
+    toast("Connecting to " + url + " — video and text start about 20 s after the stream arrives");
+    if (!hls) setTimeout(() => location.reload(), 15000);
+  } catch (err) { toast(err.message, true); }
+};
+
 $("chSel").onchange = () => { location.search = `?ch=${encodeURIComponent($("chSel").value)}`; };
 
 if (EMBED) {   // inside Grafana there is no top bar: own light/dark switch
@@ -339,8 +382,11 @@ if (EMBED) {   // inside Grafana there is no top bar: own light/dark switch
   const now = Date.now() / 1000 - 300, [d, hm] = toInputs(now);
   $("gDate").value = d; $("gTime").value = hm + ":00";
   const { chans, cur } = await mainChannel();
+  if (!cur) { showSetLink(true); $("linkPill").hidden = true; }
   if (!cur) { $("lines").innerHTML = `<div class="empty">No channel configured yet. Add the stream URL on <a href="/ui/channels">Channel setup</a>.</div>`; $("conn").textContent = "no channel"; return; }
   cid = cur.id;
+  try { const full = (await api("/channels")).find(c => c.id === cid); curUrl = full ? full.url : ""; } catch (e) { /* */ }
+  $("linkTxt").textContent = curUrl || "no link";
   $("chName").textContent = cur.name || cur.id;
   document.title = `${cur.name || cur.id} · Live`;
   const on = chans.filter(c => c.enabled !== false);

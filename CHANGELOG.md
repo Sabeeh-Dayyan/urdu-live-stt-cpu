@@ -1,5 +1,13 @@
 # Changelog
 
+## 0.2.4 — 2026-11-26
+- **One-step stream entry**: the live page shows the stream link with **✎ Change** and opens a
+  large "Enter the stream link" box by itself when nothing arrives; `make stream URL=…` /
+  `scripts/set_stream.sh` from a terminal; `make start` starts Docker services and the system.
+- CPU profiles: 8 s segments, 16 s packing (measured delay p50 35.2 → 12.9 s, WER 26.4 → 20.7 %).
+- README: "Transcribe a UDP stream in 3 steps", which link format to enter, architecture and
+  workflow diagrams (`docs/images/`).
+
 ## 0.2.3 — 2026-11-25
 - Grafana: live video and transcript first, live stat cards directly below; the embedded page
   follows the computer's light/dark setting (Grafana too, `GF_USERS_DEFAULT_THEME=system`) and has

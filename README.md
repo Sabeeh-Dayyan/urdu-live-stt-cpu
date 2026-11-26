@@ -26,7 +26,47 @@ as MPEG-TS over UDP (unicast or multicast). It produces:
 It suits **one channel per ~8-core machine**. For many channels and low latency use the GPU
 edition: **[urdu-live-stt-gpu](https://github.com/Sabeeh-Dayyan/urdu-live-stt-gpu)**.
 
+## Transcribe a UDP stream in 3 steps
+
+![How a spoken word becomes text](docs/images/workflow.svg)
+
+**1. Start everything** (once):
+
+```bash
+make start                       # laptop: Docker services (DB, Redis, Grafana) + the system
+# server:  cd deploy && docker compose up -d --build     (see "Quick start: live server")
+```
+
+**2. Enter the UDP link.** Any one of these; nothing else needs configuring (Urdu speech, the
+Urdu-tagged audio track or the first one, name and ID are automatic):
+
+| Where | How |
+|---|---|
+| **Web page** (easiest) | Open `http://HOST:8000`. Click **✎ Change** next to the stream link under the channel name, paste the link, press **▶ Start transcribing**. When no stream is arriving, a large **"Enter the stream link"** box appears by itself. |
+| Channel setup page | `http://HOST:8000/ui/channels` → **Stream link** field → **Add channel** / **Change link**. |
+| Terminal | `make stream URL=udp://@239.1.1.1:5000` (or `scripts/set_stream.sh 239.1.1.1:5000`) |
+| API | `curl -X PATCH HOST:8000/channels/ch1 -H 'content-type: application/json' -d '{"url":"udp://@239.1.1.1:5000"}'` (add `-H "Authorization: Bearer $STT_API_TOKEN"` when a token is set) |
+
+**3. Watch.** Video and Urdu text appear side by side about 20 seconds after the stream arrives; the
+highlighted line follows the video. Grafana (`http://HOST:3000`) shows the live status.
+
+**Which link to enter**
+
+| You were given | Enter | Note |
+|---|---|---|
+| Multicast group, e.g. `239.1.1.1:5000` | `udp://@239.1.1.1:5000` (or just `239.1.1.1:5000`) | this machine must be on that network/VLAN; `@` = join the group |
+| A stream sent to **this** machine on port 5000 | `udp://0.0.0.0:5000` (or `udp://@:5000`) | the sender must target this machine's IP; allow incoming UDP in the firewall |
+| SRT / RTSP / RTMP / HLS | the URL as given | e.g. `srt://host:9000?mode=caller` |
+
+Check a link before using it: `ffprobe -hide_banner "udp://@239.1.1.1:5000"` should list a video and
+an audio stream. No text after a minute? The stream card on the page says *No signal* when nothing
+arrives; *Receiving* with no text means the audio is silent or music.
+
 ## Architecture
+
+![Architecture](docs/images/architecture.svg)
+
+<details><summary>Detailed component graph (Mermaid)</summary>
 
 ```mermaid
 flowchart LR
@@ -52,6 +92,8 @@ flowchart LR
   W -. metrics .-> PROM
   ASR -. metrics .-> PROM
 ```
+
+</details>
 
 * **Two passes.** FAST (`large-v3-turbo`, greedy) gives live text. REFINE (beam 5, ±0.5 s context;
   turbo on CPU) replaces it in place.
@@ -174,7 +216,8 @@ make infra        # dev Postgres, Redis, Prometheus, Grafana (localhost only)
 make reference    # (optional) rebuild the FLEURS reference programme
 make test         # unit + integration tests
 make testbed      # terminal 1: loops a test programme to udp://127.0.0.1:5101
-make run          # terminal 2: everything (or `make up` to run detached)
+make start        # terminal 2: Docker services + the system, detached (or `make run` in the foreground)
+make stream URL=127.0.0.1:5101   # point the channel at the test feed (or paste it on the web page)
 open http://localhost:8000
 ```
 
